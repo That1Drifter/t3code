@@ -116,9 +116,8 @@ const NON_REPOSITORY_REMOTE_STATUS_DETAILS = Object.freeze<GitVcsDriver.GitRemot
  *
  * Worktrees are where this bites. A worktree base path is longer than the
  * repository root, so a repository that clones fine can still fail to check out
- * into a worktree, and fail to be removed afterwards. Removal is the worse half:
- * git drops its administrative record before deleting files, so a partial delete
- * strands the directory where `git worktree list` can no longer see it.
+ * into a worktree, and fail to be removed afterwards. A failed removal can drop
+ * the administrative record and leave files that `git worktree list` cannot see.
  *
  * Passed per invocation through `GIT_CONFIG_*` rather than argv so the config
  * reaches every git subcommand without changing the command line, and nothing is
@@ -144,8 +143,12 @@ export const windowsLongPathConfigEnv = (
   }
   const countKey =
     Object.keys(env).find((key) => key.toUpperCase() === "GIT_CONFIG_COUNT") ?? "GIT_CONFIG_COUNT";
-  const inherited = env[countKey]?.trim();
-  if (inherited !== undefined && inherited !== "" && !/^\d+$/.test(inherited)) {
+  const inherited = env[countKey];
+  if (
+    inherited !== undefined &&
+    inherited !== "" &&
+    /^[ \t\r\n\v\f]*\+?\d+/.exec(inherited)?.[0] !== inherited
+  ) {
     return {};
   }
   const count = inherited === undefined || inherited === "" ? 0 : Number.parseInt(inherited, 10);
