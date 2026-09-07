@@ -32,10 +32,10 @@ import {
 } from "@t3tools/contracts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import {
+  gitCommandEnv,
   makeGitVcsDriverCore,
   PATCH_RENDER_PREFIX_ARGS,
   splitNullSeparatedGitStdoutPaths,
-  windowsLongPathConfigEnv,
 } from "./GitVcsDriverCore.ts";
 import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
@@ -440,8 +440,7 @@ const gitCommand = Effect.fn("GitVcsDriver.gitCommand")(function* (
   const platform = yield* HostProcessPlatform;
   let env = options?.env;
   if (platform === "win32") {
-    const inheritedEnv = { ...globalThis.process.env, ...env };
-    env = { ...inheritedEnv, ...windowsLongPathConfigEnv(platform, inheritedEnv) };
+    env = gitCommandEnv(platform, globalThis.process.env, env);
   }
   return yield* process.run({
     operation,

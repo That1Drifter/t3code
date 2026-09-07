@@ -127,12 +127,6 @@ const NON_REPOSITORY_REMOTE_STATUS_DETAILS = Object.freeze<GitVcsDriver.GitRemot
  * A `GIT_CONFIG_COUNT` that is not a count is left alone. Git rejects a bogus
  * value itself, and appending to it would overwrite the caller's first entry and
  * turn that loud failure into a silently different config.
- *
- * The existing count is found case-insensitively, and its name reused. Windows
- * environment variables ignore case, but spreading `process.env` into a plain
- * object keeps whatever casing the host used, so adding `GIT_CONFIG_COUNT`
- * beside an inherited `git_config_count` would leave two entries that differ
- * only in case. Spawn keeps one of those, which would drop the caller's entries.
  */
 export const windowsLongPathConfigEnv = (
   platform: NodeJS.Platform,
@@ -157,6 +151,24 @@ export const windowsLongPathConfigEnv = (
     [`GIT_CONFIG_KEY_${count}`]: "core.longpaths",
     [`GIT_CONFIG_VALUE_${count}`]: "true",
   };
+};
+
+/** Merge in precedence order so a caller's count wins regardless of casing on Windows. */
+export const gitCommandEnv = (
+  platform: NodeJS.Platform,
+  ...sources: ReadonlyArray<NodeJS.ProcessEnv | undefined>
+): NodeJS.ProcessEnv => {
+  const env: NodeJS.ProcessEnv = {};
+  for (const source of sources) {
+    if (platform !== "win32") {
+      Object.assign(env, source);
+      continue;
+    }
+    for (const [key, value] of Object.entries(source ?? {})) {
+      env[key.toUpperCase() === "GIT_CONFIG_COUNT" ? "GIT_CONFIG_COUNT" : key] = value;
+    }
+  }
+  return { ...env, ...windowsLongPathConfigEnv(platform, env) };
 };
 
 type TraceTailState = {
@@ -803,19 +815,11 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
               }),
           ),
         );
-        const spawnEnv = {
-          ...process.env,
-          ...input.env,
-          ...trace2Monitor.env,
-        };
         const child = yield* commandSpawner
           .spawn(
             ChildProcess.make("git", commandInput.args, {
               cwd: commandInput.cwd,
-              env: {
-                ...spawnEnv,
-                ...windowsLongPathConfigEnv(hostPlatform, spawnEnv),
-              },
+              env: gitCommandEnv(hostPlatform, process.env, input.env, trace2Monitor.env),
             }),
           )
           .pipe(

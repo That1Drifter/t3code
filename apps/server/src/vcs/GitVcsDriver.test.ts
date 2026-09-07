@@ -114,8 +114,12 @@ it.effect("GitVcsDriver forwards execute env to the VCS process", () => {
   );
 });
 
-for (const platform of ["win32", "linux"] as const) {
-  it.effect(`GitVcsDriver applies long path configuration for ${platform}`, () =>
+for (const [platform, countKey] of [
+  ["win32", "GIT_CONFIG_COUNT"],
+  ["win32", "git_config_count"],
+  ["linux", "GIT_CONFIG_COUNT"],
+] as const) {
+  it.effect(`GitVcsDriver applies long path configuration for ${platform} with ${countKey}`, () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const cwd = yield* fileSystem.makeTempDirectoryScoped();
@@ -126,13 +130,13 @@ for (const platform of ["win32", "linux"] as const) {
           cwd,
           args: ["config", "--get", key],
           env: {
-            GIT_CONFIG_COUNT: "2",
+            [countKey]: "2",
             GIT_CONFIG_KEY_0: "user.name",
             GIT_CONFIG_VALUE_0: "inherited-name",
             GIT_CONFIG_KEY_1: "core.longpaths",
             GIT_CONFIG_VALUE_1: "false",
-            GIT_CONFIG_KEY_2: "unused.fixture",
-            GIT_CONFIG_VALUE_2: "stale",
+            GIT_CONFIG_KEY_2: "user.name",
+            GIT_CONFIG_VALUE_2: "outside-count",
           },
         });
         return result.stdout.trim();
