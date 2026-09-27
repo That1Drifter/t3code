@@ -32,9 +32,7 @@ import {
   type VcsStatusResult,
   type WorktreeSubmodules,
 } from "@t3tools/contracts";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import {
-  gitCommandEnv,
   makeGitVcsDriverCore,
   PATCH_RENDER_PREFIX_ARGS,
   splitNullSeparatedGitStdoutPaths,
@@ -474,7 +472,7 @@ function parseGitRemoteVerboseOutput(
   return remotes;
 }
 
-const gitCommand = Effect.fn("GitVcsDriver.gitCommand")(function* (
+const gitCommand = (
   process: VcsProcess.VcsProcess["Service"],
   operation: string,
   cwd: string,
@@ -488,20 +486,15 @@ const gitCommand = Effect.fn("GitVcsDriver.gitCommand")(function* (
     readonly outputMode?: VcsProcess.VcsProcessInput["outputMode"];
     readonly appendTruncationMarker?: boolean;
   },
-) {
-  const platform = yield* HostProcessPlatform;
-  let env = options?.env;
-  if (platform === "win32") {
-    env = gitCommandEnv(platform, globalThis.process.env, env);
-  }
-  return yield* process.run({
+) =>
+  process.run({
     operation,
     command: "git",
     args: ["-C", cwd, ...args],
     cwd,
     spawnCwd: globalThis.process.cwd(),
     ...(options?.stdin !== undefined ? { stdin: options.stdin } : {}),
-    ...(env !== undefined ? { env } : {}),
+    ...(options?.env !== undefined ? { env: options.env } : {}),
     ...(options?.allowNonZeroExit !== undefined
       ? { allowNonZeroExit: options.allowNonZeroExit }
       : {}),
@@ -512,7 +505,6 @@ const gitCommand = Effect.fn("GitVcsDriver.gitCommand")(function* (
       ? { appendTruncationMarker: options.appendTruncationMarker }
       : {}),
   });
-});
 
 export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* () {
   const fileSystem = yield* FileSystem.FileSystem;

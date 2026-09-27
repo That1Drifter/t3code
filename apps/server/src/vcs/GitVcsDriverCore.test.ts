@@ -31,13 +31,12 @@ import {
 import { ServerConfig } from "../config.ts";
 import { gitCommandDuration } from "../observability/Metrics.ts";
 import {
-  gitCommandEnv,
   makeGitVcsDriverCore,
   parseGitCheckoutProgressLine,
   splitNullSeparatedGitStdoutPaths,
-  windowsLongPathConfigEnv,
 } from "./GitVcsDriverCore.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
+import { gitCommandEnv, windowsLongPathConfigEnv } from "./VcsProcess.ts";
 
 const encodeGitCommandError = Schema.encodeEffect(Schema.fromJsonString(GitCommandError));
 
@@ -3345,6 +3344,28 @@ describe("gitCommandEnv", () => {
         GIT_CONFIG_VALUE_1: "true",
       });
     }
+  });
+
+  it("lets caller config entries replace inherited ones regardless of casing", () => {
+    const host = {
+      GIT_CONFIG_COUNT: "2",
+      GIT_CONFIG_KEY_0: "user.name",
+      GIT_CONFIG_VALUE_0: "host-name",
+      GIT_CONFIG_KEY_1: "user.email",
+      GIT_CONFIG_VALUE_1: "host@example.com",
+    };
+    const caller = {
+      git_config_count: "1",
+      git_config_key_0: "user.name",
+      git_config_value_0: "caller-name",
+    };
+    assert.deepStrictEqual(gitCommandEnv("win32", host, caller), {
+      GIT_CONFIG_COUNT: "2",
+      GIT_CONFIG_KEY_0: "user.name",
+      GIT_CONFIG_VALUE_0: "caller-name",
+      GIT_CONFIG_KEY_1: "core.longpaths",
+      GIT_CONFIG_VALUE_1: "true",
+    });
   });
 
   it("preserves a malformed caller override for Git to reject", () => {

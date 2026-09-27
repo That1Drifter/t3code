@@ -18,6 +18,7 @@ import {
   VcsProcessStdinWriteError,
   VcsProcessTimeoutError,
 } from "@t3tools/contracts";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as ProcessRunner from "../processRunner.ts";
 
 export interface VcsProcessInput {
@@ -113,6 +114,75 @@ const isTransientGitExit = (stderr: string) =>
   /unable to create [^\n]*\.lock['"]?: file exists/i.test(stderr) ||
   /(?:unable to stat|lstat\(|error: open\()[^\n]+: no such file or directory/i.test(stderr);
 
+/**
+ * Git on Windows refuses to create or delete a path longer than MAX_PATH (260)
+ * unless `core.longpaths` is set. The OS-level LongPathsEnabled setting does not
+ * cover it: git opts in per repository, and it is off by default.
+ *
+ * Worktrees are where this bites. A worktree base path is longer than the
+ * repository root, so a repository that clones fine can still fail to check out
+ * into a worktree, and fail to be removed afterwards. A failed removal can drop
+ * the administrative record and leave files that `git worktree list` cannot see.
+ *
+ * Passed per invocation through `GIT_CONFIG_*` rather than argv so the config
+ * reaches every git subcommand without changing the command line, and nothing is
+ * written to the user's config. Appended after any entries the caller already
+ * set so an inherited `GIT_CONFIG_COUNT` keeps working.
+ *
+ * A `GIT_CONFIG_COUNT` that is not a count is left alone. Git rejects a bogus
+ * value itself, and appending to it would overwrite the caller's first entry and
+ * turn that loud failure into a silently different config.
+ */
+export const windowsLongPathConfigEnv = (
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv => {
+  if (platform !== "win32") {
+    return {};
+  }
+  const countKey =
+    Object.keys(env).find((key) => key.toUpperCase() === "GIT_CONFIG_COUNT") ?? "GIT_CONFIG_COUNT";
+  const inherited = env[countKey];
+  if (
+    inherited !== undefined &&
+    inherited !== "" &&
+    /^[ \t\r\n\v\f]*\+?\d+/.exec(inherited)?.[0] !== inherited
+  ) {
+    return {};
+  }
+  const count = inherited === undefined || inherited === "" ? 0 : Number.parseInt(inherited, 10);
+  return {
+    [countKey]: String(count + 1),
+    [`GIT_CONFIG_KEY_${count}`]: "core.longpaths",
+    [`GIT_CONFIG_VALUE_${count}`]: "true",
+  };
+};
+
+const GIT_CONFIG_ENV_KEY = /^GIT_CONFIG_(?:COUNT|KEY_\d+|VALUE_\d+)$/i;
+
+/**
+ * Merge env sources in precedence order for a git spawn. On Windows, env names
+ * are case-insensitive and spawn keeps only one spelling of each, so `GIT_CONFIG_*`
+ * names are uppercased first and a later source's entry replaces an earlier one
+ * regardless of casing.
+ */
+export const gitCommandEnv = (
+  platform: NodeJS.Platform,
+  ...sources: ReadonlyArray<NodeJS.ProcessEnv | undefined>
+): NodeJS.ProcessEnv => {
+  const env: NodeJS.ProcessEnv = {};
+  for (const source of sources) {
+    if (platform !== "win32") {
+      Object.assign(env, source);
+      continue;
+    }
+    for (const [key, value] of Object.entries(source ?? {})) {
+      env[GIT_CONFIG_ENV_KEY.test(key) ? key.toUpperCase() : key] = value;
+    }
+  }
+  return { ...env, ...windowsLongPathConfigEnv(platform, env) };
+};
+
 export const make = Effect.gen(function* () {
   const processRunner = yield* ProcessRunner.ProcessRunner;
   const vcsProcesses = yield* Semaphore.make(VCS_PROCESS_CONCURRENCY);
@@ -125,6 +195,11 @@ export const make = Effect.gen(function* () {
       cwd: input.cwd,
       argumentCount: input.args.length,
     };
+    const platform = yield* HostProcessPlatform;
+    const env =
+      input.command === "git" && platform === "win32"
+        ? gitCommandEnv(platform, process.env, input.env)
+        : input.env;
 
     const result = yield* processRunner
       .run({
@@ -134,7 +209,7 @@ export const make = Effect.gen(function* () {
         ...(input.spawnCwd !== undefined ? { spawnCwd: input.spawnCwd } : {}),
         ...(input.stdin !== undefined ? { stdin: input.stdin } : {}),
         ...(input.onStdoutChunk !== undefined ? { onStdoutChunk: input.onStdoutChunk } : {}),
-        ...(input.env !== undefined ? { env: input.env } : {}),
+        ...(env !== undefined ? { env } : {}),
         timeout: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         maxOutputBytes: input.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES,
         outputMode: input.outputMode ?? "truncate",

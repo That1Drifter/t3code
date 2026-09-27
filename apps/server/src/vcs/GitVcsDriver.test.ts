@@ -1025,7 +1025,7 @@ it.effect("GitVcsDriver forwards execute env to the VCS process", () => {
       outputMode: "error",
     });
 
-    assert.deepInclude(observedEnv, {
+    assert.deepStrictEqual(observedEnv, {
       GIT_INDEX_FILE: "/tmp/t3-index",
     });
     assert.strictEqual(observedAppendTruncationMarker, true);

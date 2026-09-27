@@ -1,6 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, expect, it } from "@effect/vitest";
-import { HostProcessWorkingDirectory } from "@t3tools/shared/hostProcess";
+import { HostProcessPlatform, HostProcessWorkingDirectory } from "@t3tools/shared/hostProcess";
 import * as Duration from "effect/Duration";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -290,6 +290,26 @@ describe("VcsProcess.run", () => {
       expect(result.stdoutTruncated).toBe(false);
       expect(result.stderrTruncated).toBe(false);
     }).pipe(provideLive),
+  );
+
+  it.effect.each(["win32", "linux"] as const)(
+    "enables Git long paths only on Windows hosts (%s)",
+    (platform) =>
+      Effect.gen(function* () {
+        const result = yield* run({
+          operation: "test.longpaths",
+          command: "git",
+          args: ["config", "--get", "core.longpaths"],
+          cwd: process.cwd(),
+          env: {
+            GIT_CONFIG_COUNT: "1",
+            GIT_CONFIG_KEY_0: "core.longpaths",
+            GIT_CONFIG_VALUE_0: "false",
+          },
+        });
+
+        expect(result.stdout.trim()).toBe(platform === "win32" ? "true" : "false");
+      }).pipe(provideLive, Effect.provideService(HostProcessPlatform, platform)),
   );
 
   it.effect("writes stdin before waiting for exit", () =>

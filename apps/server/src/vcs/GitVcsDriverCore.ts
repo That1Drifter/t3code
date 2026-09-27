@@ -41,6 +41,7 @@ import {
   parseRemoteRefWithRemoteNames,
 } from "../git/remoteRefs.ts";
 import { ServerConfig } from "../config.ts";
+import { gitCommandEnv } from "./VcsProcess.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const gitProcesses = Semaphore.makeUnsafe(8);
@@ -111,68 +112,6 @@ const NON_REPOSITORY_REMOTE_STATUS_DETAILS = Object.freeze<GitVcsDriver.GitRemot
   behindCount: 0,
   aheadOfDefaultCount: 0,
 });
-
-/**
- * Git on Windows refuses to create or delete a path longer than MAX_PATH (260)
- * unless `core.longpaths` is set. The OS-level LongPathsEnabled setting does not
- * cover it: git opts in per repository, and it is off by default.
- *
- * Worktrees are where this bites. A worktree base path is longer than the
- * repository root, so a repository that clones fine can still fail to check out
- * into a worktree, and fail to be removed afterwards. A failed removal can drop
- * the administrative record and leave files that `git worktree list` cannot see.
- *
- * Passed per invocation through `GIT_CONFIG_*` rather than argv so the config
- * reaches every git subcommand without changing the command line, and nothing is
- * written to the user's config. Appended after any entries the caller already
- * set so an inherited `GIT_CONFIG_COUNT` keeps working.
- *
- * A `GIT_CONFIG_COUNT` that is not a count is left alone. Git rejects a bogus
- * value itself, and appending to it would overwrite the caller's first entry and
- * turn that loud failure into a silently different config.
- */
-export const windowsLongPathConfigEnv = (
-  platform: NodeJS.Platform,
-  env: NodeJS.ProcessEnv,
-): NodeJS.ProcessEnv => {
-  if (platform !== "win32") {
-    return {};
-  }
-  const countKey =
-    Object.keys(env).find((key) => key.toUpperCase() === "GIT_CONFIG_COUNT") ?? "GIT_CONFIG_COUNT";
-  const inherited = env[countKey];
-  if (
-    inherited !== undefined &&
-    inherited !== "" &&
-    /^[ \t\r\n\v\f]*\+?\d+/.exec(inherited)?.[0] !== inherited
-  ) {
-    return {};
-  }
-  const count = inherited === undefined || inherited === "" ? 0 : Number.parseInt(inherited, 10);
-  return {
-    [countKey]: String(count + 1),
-    [`GIT_CONFIG_KEY_${count}`]: "core.longpaths",
-    [`GIT_CONFIG_VALUE_${count}`]: "true",
-  };
-};
-
-/** Merge in precedence order so a caller's count wins regardless of casing on Windows. */
-export const gitCommandEnv = (
-  platform: NodeJS.Platform,
-  ...sources: ReadonlyArray<NodeJS.ProcessEnv | undefined>
-): NodeJS.ProcessEnv => {
-  const env: NodeJS.ProcessEnv = {};
-  for (const source of sources) {
-    if (platform !== "win32") {
-      Object.assign(env, source);
-      continue;
-    }
-    for (const [key, value] of Object.entries(source ?? {})) {
-      env[key.toUpperCase() === "GIT_CONFIG_COUNT" ? "GIT_CONFIG_COUNT" : key] = value;
-    }
-  }
-  return { ...env, ...windowsLongPathConfigEnv(platform, env) };
-};
 
 type TraceTailState = {
   processedChars: number;
