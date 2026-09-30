@@ -146,7 +146,7 @@ export const windowsLongPathConfigEnv = (
   if (
     inherited !== undefined &&
     inherited !== "" &&
-    /^[ \t\r\n\v\f]*\+?\d+/.exec(inherited)?.[0] !== inherited
+    /^[ \t\r\n\v\f]*(?:\+?\d+|-0+)/.exec(inherited)?.[0] !== inherited
   ) {
     return {};
   }

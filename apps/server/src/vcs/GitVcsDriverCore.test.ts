@@ -3425,6 +3425,16 @@ describe("windowsLongPathConfigEnv", () => {
     }
   });
 
+  it("accepts a negative zero count, which Git parses as zero", () => {
+    for (const count of ["-0", "-00", " -0"]) {
+      assert.deepStrictEqual(windowsLongPathConfigEnv("win32", { GIT_CONFIG_COUNT: count }), {
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "core.longpaths",
+        GIT_CONFIG_VALUE_0: "true",
+      });
+    }
+  });
+
   it("reuses an inherited count whose name differs only in case", () => {
     const result = windowsLongPathConfigEnv("win32", { git_config_count: "2" });
 
@@ -3446,7 +3456,7 @@ describe("windowsLongPathConfigEnv", () => {
   });
 
   it("leaves a malformed count alone so git still reports it", () => {
-    for (const malformed of ["not-a-number", "2x", "-1", "1.5", "  ", "1 ", "1\n"]) {
+    for (const malformed of ["not-a-number", "2x", "-1", "-01", "1.5", "  ", "1 ", "1\n"]) {
       assert.deepStrictEqual(
         windowsLongPathConfigEnv("win32", {
           GIT_CONFIG_COUNT: malformed,
