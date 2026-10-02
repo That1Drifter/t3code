@@ -3978,8 +3978,8 @@ describe("Windows long path configuration", () => {
   );
 
   it("extends an inherited count spelled in a different case", () => {
-    // A second spelling would collapse with the first on spawn, and whichever
-    // survived would decide which entries Git reads.
+    // Two spellings collapse to one on spawn (the uppercase one wins), so the
+    // count must be bumped under the spelling that is already there.
     assert.deepStrictEqual(windowsLongPathConfigEnv("win32", { git_config_count: "2" }), {
       git_config_count: "3",
       GIT_CONFIG_KEY_2: "core.longpaths",

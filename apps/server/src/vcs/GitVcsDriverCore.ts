@@ -902,10 +902,8 @@ const collectOutput = Effect.fnUntraced(function* (
 /**
  * Git on Windows cannot create or delete a path longer than MAX_PATH (260)
  * unless `core.longpaths` is set. The OS-level LongPathsEnabled setting does not
- * cover it, and git leaves it off by default. Worktrees sit deeper than the
- * repository root, so a repository that works in place can fail to check out
- * into a worktree. Removal is worse: `git worktree remove` drops its record
- * before deleting files, so a long path strands a directory git no longer lists.
+ * cover it, and git leaves it off by default, so deep worktrees fail to check
+ * out and fail midway through removal.
  *
  * Passed through `GIT_CONFIG_*` rather than `-c` so argv stays the same on every
  * platform and nothing is written to the user's config. The entry is appended
