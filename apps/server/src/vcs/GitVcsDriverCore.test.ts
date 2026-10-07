@@ -3936,7 +3936,7 @@ describe("Windows long path configuration", () => {
     key: string,
   ) {
     const layer = GitVcsDriver.layer.pipe(
-      Layer.provide(ServerConfigLayer),
+      Layer.provide(layerServerConfig),
       Layer.provideMerge(NodeServices.layer),
       Layer.provide(Layer.succeed(HostProcessPlatform, platform)),
     );
